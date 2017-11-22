@@ -14,7 +14,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
-
+#include <stdbool.h>
 #include "mm.h"
 #include "memlib.h"
 
@@ -50,6 +50,9 @@ size_t getSize(int* metaWord);
 void setSize(int* metaWord, size_t size);
 int* getStartMeta(void* blockPointer);
 int* getEndMeta(void* blockPointer);
+bool setMetas(int* meta, int size, int status);
+bool isPreviousFree(int* blockPointer, int* previousSize);
+bool isNextFree(int* blockPointer, int* nextSize);
 
 void *beginning;
 size_t heap_size = 1<<18;
@@ -148,22 +151,111 @@ void mm_free(void *blockPtr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *oldptr = ptr;
-    void *newptr;
+    int *oldptr = (int*)ptr - 1;
+    int *newptr = oldptr;
     size_t copySize;
     
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-      return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-      copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
+    size_t askedSize = (ALIGN(size))/WORD_SIZE + 2;
+    
+    size_t oldSize = getSize(ptr);
+    
+    int nextBlockSize = 0;
+    int previousBlockSize = 0;
+    if(isNextFree(oldptr, &nextBlockSize))
+    {
+    	if(oldSize + nextBlockSize >= askedSize)
+    	{
+    		// First, allocate new size
+    		newptr = oldptr;
+			setMetas(newptr, askedSize, 1);
+        	
+
+        	// Free the remaining space
+        	int remainingFreeSpace = oldSize + nextBlockSize - askedSize;
+        	if(remainingFreeSpace> 1){
+        		int* nextFreeMetaBlock = newptr + askedSize;
+        		setMetas(nextFreeMetaBlock, remainingFreeSpace, 0);
+        	}
+        	return (void*)(newptr + 1);
+    	}
+    }
+    /*
+    else if (isPreviousFree(oldptr, &previousBlockSize))
+    {
+        if(oldSize + previousBlockSize >= askedSize)
+    	{
+    		// First, allocate new size
+    		newptr = oldptr - previousBlockSize;
+			setMetas(newptr, askedSize, 1);
+        	
+        	// Free the remaining space
+        	int remainingFreeSpace = oldSize + previousBlockSize - askedSize;
+        	if(remainingFreeSpace> 1){
+        		int* nextFreeMetaBlock = newptr + askedSize;
+        		setMetas(nextFreeMetaBlock, remainingFreeSpace, 0);
+        	}
+        	return (void*)(newptr + 1);
+    	}
+    }
+    */
+    
+    else{
+		void *newptrvoid = mm_malloc(size);
+		if (newptrvoid == NULL)
+		  return NULL;
+
+		copySize = (*(size_t *)((char *)oldptr))*WORD_SIZE;
+		if (size < copySize)
+		  copySize = size;
+		memcpy(newptrvoid, (void*)(oldptr+1), copySize);
+		mm_free((void*)oldptr);
+		
+		return newptrvoid;
+	}
+	
+
+}
+
+bool setMetas(int* meta, int size, int status)
+{
+	if(status > 1){return false;}
+	
+	*meta = size;
+	int* endMeta = getEndMeta(meta);
+	*endMeta = size;
+		
+    setStatusBit(meta, status);
+    setStatusBit(endMeta, status);
+    
+    return true;
 }
 
 
+bool isNextFree(int* blockPointer, int* nextSize)
+{
+	int* meta = getStartMeta(blockPointer);
+	int* nextMeta = meta + getSize(meta);
+	if(getStatusBit(nextMeta) == 0)
+	{
+		*nextSize = getSize(nextMeta);
+		return true;
+	}
+	nextSize = 0;
+	return false;
+}
+
+
+bool isPreviousFree(int* blockPointer, int* previousSize)
+{
+	int* previousMeta = getStartMeta(blockPointer) - 1;
+	if(getStatusBit(previousMeta) == 0)
+	{
+		*previousSize = getSize(previousMeta);
+		return true;
+	}
+	previousSize = 0;
+	return false;
+}
 
 int getStatusBit(int* metaWord)
 {
@@ -176,7 +268,7 @@ int getStatusBit(int* metaWord)
  */
 void setStatusBit(int* metaWord, int status)
 {
-	*metaWord = (( *metaWord & -2) | status);
+	*metaWord = (( *metaWord & -2) | (status & 1));
 }
 
 /**
