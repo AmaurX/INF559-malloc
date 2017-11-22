@@ -105,11 +105,15 @@ void *mm_malloc(size_t size)
     if (block == (void *)-1)
 	return NULL;
     else {
-    
-    	*block = newsize;
-
+    	// Stocking the size in meta words as the number of word!
+    	// It's ok because we always have a multiple of two words.
+    	
+    	*block = newsize/WORD_SIZE;
+		int* endMeta = getEndMeta(block);
+		*endMeta = newsize/WORD_SIZE;
+		
         setStatusBit(block, 1);
-        setStatusBit(getEndMeta(block), 1);
+        setStatusBit(endMeta, 1);
 
         return (void *)((char *)block + WORD_SIZE);
     }
@@ -177,11 +181,11 @@ void setStatusBit(int* metaWord, int status)
 
 /**
  * Return the read size in number of words. 
- * In metaWord, size was stored in number of bytes.
+ * In metaWord, size was stored in number of words.
  */
 size_t getSize(int* metaWord)
 {
-	return  (*metaWord & -2)/WORD_SIZE;
+	return  (*metaWord & -2);
 }
 
 /**
@@ -217,10 +221,10 @@ int* getEndMeta(void* blockPointer)
 {	
 	//printf("hello\n");
 	int* meta = getStartMeta(blockPointer);
-	printf("begin adress = %p\n",meta );	
-	printf("size =  %d \n", getSize(meta));
-	printf("end adress   = %p\n",meta + getSize(meta)/4 - 1);	
-	return meta + getSize(meta)/4 - 1;
+	//printf("begin adress = %p\n",meta );	
+	//printf("size =  %d \n", getSize(meta));
+	//printf("end adress   = %p\n",meta + getSize(meta) - 1);	
+	return meta + getSize(meta) - 1;
 }
 
 
