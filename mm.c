@@ -120,27 +120,71 @@ void *mm_malloc(size_t size)
 }
 
 /*
- * mm_free - Freeing a block does nothing.
+ * mm_free
+ * blockPtr : address of the first block of data : ie address given to the client
+ * meta is one block before.
  */
 void mm_free(void *blockPtr)
 {
-	/*
+	printf("FREE\n");
+	//printf("\tfree %p", (int*)blockPtr);
+
+	blockPtr = (int*)blockPtr -1;
+	
 	int* startMeta = getStartMeta(blockPtr);
 	int* endMeta = getEndMeta(blockPtr);
-
-	//first thing: set status to free
-	setStatusBit(blockPtr, 0);
-
-	//check next block in memory
-	int* nextBlockMeta = getEndMeta(blockPtr) + 1;
-	if( !getStatusBit(nextBlockMeta))
-	{}
-		//free block need to coalesce
-		
 	
+	//int startMeta = (int*)blockPtr -1;
+	
+
+	printf("\t %p -> %p, %zu | %zu\n", startMeta, endMeta, getSize(startMeta), getSize(endMeta));
+	
+	// --- NEXT BLOCK ---
+	//check next block in memory
+	int* nextBlockMeta = endMeta + 1;
+	if( !getStatusBit(nextBlockMeta))
+	{
+		printf("\tcoalescing with next ");
+		//free block -> need to coalesce
+		int totalSize = getSize(startMeta) + getSize(nextBlockMeta);
+		
+		int* nextBlockEndMeta =  nextBlockMeta + getSize(nextBlockMeta) - 1;
+		endMeta = nextBlockEndMeta;
+		printf("%p -> %p\n (%zu)", nextBlockMeta, nextBlockEndMeta, getSize(nextBlockMeta));
+		/*
+		//setting metas
+		setSize(endMeta, totalSize);
+		setSize(startMeta, totalSize);
+		
+		
+		// */
+		//just to anticipate the newt coalescing
+	}
+	
+/*
+		// --- PREV BLOCK ---
 	//check prev block in memory
-	int* prevBlockMeta = getStartMeta(blockPtr) -1;
-	*/
+	int* prevBlockEndMeta = startMeta - 1;
+	
+	if(!getStatusBit(prevBlockEndMeta))
+	{
+		//previus block is free -> coalescing
+		int totalSize = getSize(prevBlockEndMeta) + getSize(startMeta);
+		
+		int* prevBlockStartMeta = prevBlockEndMeta - getSize(prevBlockEndMeta);
+		startMeta = prevBlockStartMeta;
+		
+		setSize(startMeta, totalSize);
+		setSize(endMeta, totalSize);
+
+		printf("\t coalescing xith %p -> %p", prevBlockStartMeta, prevBlockEndMeta);
+	}
+
+	printf("\t endOf Coal %p -> %p ", startMeta, endMeta);
+	setStatusBit(startMeta, 0);
+	setStatusBit(endMeta, 0);
+
+	// */
 }
 
 /*
