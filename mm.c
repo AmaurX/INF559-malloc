@@ -63,11 +63,12 @@ bool findFirstFreeSpace(size_t size, int** freeBlock);
 bool mm_check();
 void findBigestFreeSpace(int *size, int** freeBlock);
 bool isMetaValid(int *meta);
+bool findBestFreeSpace(size_t size, int** freeBlock);
 
 
 int *beginning;
 size_t heap_size = 1<<8;
-size_t add_block_size = 1<<8;
+size_t add_block_size = 1<<12;
 int *current_heap;
 int *heap_end;
 
@@ -118,7 +119,7 @@ void update_heap_end()
 void *mm_malloc(size_t size)
 {
 	void* allocatedPtr = (void*)our_mm_malloc(size);
-	glog("Allocated %d bytes at %p", size, allocatedPtr);
+	//glog("Allocated %d bytes at %p", size, allocatedPtr);
 	return allocatedPtr;
 }
 
@@ -126,7 +127,7 @@ void *mm_malloc(size_t size)
 int *our_mm_malloc(size_t size)
 {
 
-	mm_check();
+	//mm_check();
     size_t newsize =  (ALIGN(size)/WORD_SIZE + 2);
 	size_t newsizeInBytes = newsize * WORD_SIZE;
 	int* block;
@@ -135,7 +136,7 @@ int *our_mm_malloc(size_t size)
 	//printf("%p and %p", block, (void*)block);
 
 	int* possibleFreeBlock = (int*) 0;
-	if(findFirstFreeSpace(newsize, &possibleFreeBlock))
+	if(findBestFreeSpace(newsize, &possibleFreeBlock))
 	{
 		setMetas(possibleFreeBlock, getSize(possibleFreeBlock), 1);
 		//printf("Next free block found at %p with size %d\n", possibleFreeBlock, newsize);
@@ -144,7 +145,7 @@ int *our_mm_malloc(size_t size)
 	}
 
 	while(heap_size - (size_t)(current_heap - beginning)*WORD_SIZE < newsizeInBytes){
-		void* allocation = mem_sbrk(newsizeInBytes);
+		void* allocation = mem_sbrk(add_block_size);
 		if (allocation == (void *)-1){
 			printf("\n\nbeginning    : %p\n", beginning);
 			printf("current_heap : %p\n", current_heap);
@@ -199,7 +200,7 @@ void our_mm_free(int *blockPtr)
 	
 	//printf("FREE\n");
 
-	mm_check();
+	//mm_check();
 	
 	int* startMeta = blockPtr -1;
 
@@ -324,6 +325,35 @@ bool findFirstFreeSpace(size_t size, int** freeBlock)
 	return false;
 }
 
+bool findBestFreeSpace(size_t size, int** freeBlock)
+{
+	bool foundAtLeastOne = false;
+	int currentSize = 0;
+	int* currentPtr = (int*)*beginning;
+	if(currentPtr == (int*)-1)
+	{
+	 currentPtr = beginning + 1;
+	}
+
+	while((void*)current_heap - (void*)currentPtr > 0)
+	{
+		int available_size = getSize(currentPtr);
+		if(available_size >= size && (!foundAtLeastOne || currentSize > available_size) && getStatusBit(currentPtr) == 0){
+			*freeBlock = currentPtr;
+			currentSize = available_size;
+			foundAtLeastOne = true;
+			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
+			if(available_size == size){
+				return true;
+			}
+		}
+		if(available_size <= 0){return false;}
+		currentPtr += available_size;
+	}
+	if(foundAtLeastOne){return true;}
+	return false;
+}
+
 
 void findBigestFreeSpace(int* mysize, int** freeBlock)
 {
@@ -432,15 +462,19 @@ int *our_mm_realloc(int *ptr, size_t size)
 		/*
 		//printf("Le block suivant est libre!!\n");
 		if(nextBlockSize == -1)
-		{
+		{	
 			//This means that this block is the last one. We just need to add more space to the heap
-			void* allocation = mem_sbrk(askedSize - oldSize);
+			int addingSize = (askedSize - oldSize)*WORD_SIZE;
+			printf("adding Size  : %zu", addingSize);
+			if(addingSize<0){printf("chelou\n");}
+			void* allocation = mem_sbrk(addingSize);
 			if (allocation == (void *)-1){
-				printf("\n\nbeginning    : %p\n", beginning);
+				printf("\n new-old byte: %d\n",( askedSize - oldSize)*WORD_SIZE);
+				printf("beginning    : %p\n", beginning);
 				printf("current_heap : %p\n", current_heap);
 				printf("heap_end     : %p\n", heap_end);
 				printf("heap_size    : %d\n", heap_size);
-				//printf("comparison : %d < %d ?\n", heap_size - (size_t)(current_heap - beginning)*WORD_SIZE, newsizeInBytes);
+				printf("comparison   : %d < %d ?\n", heap_size - (size_t)(current_heap - beginning)*WORD_SIZE, addingSize);
 				int BiggestFoundSize = -1;
 				int* freeBlock = (int*)0;
 				findBigestFreeSpace(&BiggestFoundSize, &freeBlock);
@@ -449,13 +483,16 @@ int *our_mm_realloc(int *ptr, size_t size)
 			}
 			update_heap_end();
 			heap_size = mem_heapsize();
-
-			block = current_heap;
-			current_heap += newsize;	
+			current_heap += addingSize;	
+			setMetas(newptr, askedSize, 1);
+			current_heap = newptr + getSize(newptr);
+			if(!mm_check()){printf("Here is double shit\n");}
 			
 
+			return (newptr + 1);
 		}
 		*/
+		
     	if(oldSize + nextBlockSize >= askedSize)
 	  	{
 	    	printf("cool, y a de la place!\n");
@@ -467,11 +504,11 @@ int *our_mm_realloc(int *ptr, size_t size)
 	   	 	// Free the remaining space
 	    	int remainingFreeSpace = oldSize + nextBlockSize - askedSize;
 	    	if(remainingFreeSpace> 1){
-	      		int* nextFreeMetaBlock = newptr + askedSize;
+	      		int* nextFreeMetaBlock = newptr + getSize(newptr);
 	      		setMetas(nextFreeMetaBlock, remainingFreeSpace, 1);
 				our_mm_free(nextFreeMetaBlock);
 	    	}
-			if(!mm_check()){printf("Here is shit\n");}
+			//if(!mm_check()){printf("Here is shit\n");}
 	    	return (newptr + 1);
 	  	}
     }
@@ -495,7 +532,7 @@ int *our_mm_realloc(int *ptr, size_t size)
       }
     */
     
-    printf("We had to add at the end... \n");
+    //printf("We had to add at the end... \n");
     newptr = our_mm_malloc(size);
     
     if (newptr == NULL)
@@ -508,7 +545,7 @@ int *our_mm_realloc(int *ptr, size_t size)
 
 
     our_mm_free(oldptr+1);
-    if(!mm_check()){printf("Here is more shit...\n");}
+    //if(!mm_check()){printf("Here is more shit...\n");}
     return newptr;
 }
 
