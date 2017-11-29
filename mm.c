@@ -16,6 +16,8 @@
  * 					|///////////////|				|-----------------------|
  * 					|occupied block	|				| free block			|
  * 
+ * In the code, m_st is often referred as meta or metaStart, as well as m_end is often endMeta
+ * 
  * To reduce the risk of errors, all functions manipulate int* pointers. 
  * Conversion from/to void* is made into mm_malloc, mm_free, mm_realloc, 
  * which act as simple wrappers around our_mm_malloc, our_mm_free & our_mm_realloc
