@@ -129,9 +129,11 @@ bool findFirstFreeSpace(size_t size, int **freeBlock);
 bool mm_check();
 void findBigestFreeSpace(int *size, int **freeBlock);
 bool isMetaValid(int *meta);
-bool findBestFreeSpace(size_t size, int **freeBlock);
-bool putFreeBlockInFreeList(int *startMeta);
-bool takeFreeBlockOutOfTheList(int *startMeta);
+bool findBestFreeSpace(size_t size, int** freeBlock);
+bool putFreeBlockInFreeList(int* startMeta);
+bool takeFreeBlockOutOfTheList(int* startMeta);
+bool findFirstFreeSpaceInExplicitList(size_t size, int** freeBlock);
+
 
 /**
  * size of the new page requested to mem_sbrk when memory looks full
@@ -196,8 +198,21 @@ int *our_mm_malloc(size_t size)
 	}
 	//printf("%p and %p", block, (void*)block);
 
-	int *possibleFreeBlock = (int *)0;
-	if (findFirstFreeSpace(newsize, &possibleFreeBlock))
+	int* possibleFreeBlock = (int*) 0;
+
+	bool isThereAFreeBlock = false;
+
+
+	if(TRY_EXPLICIT_LIST)
+	{
+		isThereAFreeBlock = findFirstFreeSpaceInExplicitList(newsize, &possibleFreeBlock);
+	}
+	else
+	{
+		isThereAFreeBlock = findFirstFreeSpace(newsize, &possibleFreeBlock);
+	}
+
+	if(isThereAFreeBlock)
 	{
 		// First, take the freeblock out of the free list
 		if (TRY_EXPLICIT_LIST)
@@ -408,6 +423,7 @@ int *our_mm_realloc(int *ptr, size_t size)
 	}
 
 	int nextBlockSize = askedSize - oldSize;
+    //int previousBlockSize = askedSize - oldSize;
 
 	if (isNextFree(oldptr, &nextBlockSize))
 	{
@@ -448,7 +464,8 @@ int *our_mm_realloc(int *ptr, size_t size)
 		if (oldSize + nextBlockSize >= askedSize)
 		{
 			//shouldn't there be some points for programs able to pass the Turing test?
-			printf("cool, y a de la place!\n");
+			//printf("cool, y a de la place!\n");
+
 			// First, allocate new size
 			newptr = oldptr;
 			setMetas(newptr, oldSize + nextBlockSize, 1);
@@ -465,6 +482,7 @@ int *our_mm_realloc(int *ptr, size_t size)
 			return (newptr + 1);
 		}
 	}
+    
 	/*
       else if (isPreviousFree(oldptr, &previousBlockSize))
       {
@@ -472,15 +490,22 @@ int *our_mm_realloc(int *ptr, size_t size)
       {
       // First, allocate new size
       newptr = oldptr - previousBlockSize;
-      setMetas(newptr, askedSize, 1);
+			setMetas(newptr, oldSize + previousBlockSize, 1);
+			
+			 copySize = (getSize(oldptr) - 1)*WORD_SIZE;
+    		if (size < copySize)
+      			copySize = 8 * (ALIGN(size)/WORD_SIZE);
+   			memcpy((void*)(newptr), (void*)(oldptr), copySize);
+			setMetas(newptr, oldSize + previousBlockSize, 1);
       
       // Free the remaining space
       int remainingFreeSpace = oldSize + previousBlockSize - askedSize;
-      if(remainingFreeSpace> 1){
+			if(remainingFreeSpace> 3){
       int* nextFreeMetaBlock = newptr + askedSize;
       setMetas(nextFreeMetaBlock, remainingFreeSpace, 0);
+				our_mm_free(nextFreeMetaBlock);
       }
-      return (void*)(newptr + 1);
+			return (newptr + 1);
       }
       }
     */
@@ -750,7 +775,7 @@ bool findFirstFreeSpace(size_t size, int **freeBlock)
 		currentPtr = beginning + 1;
 	}
 
-	while ((void *)current_heap - (void *)currentPtr > 0)
+	while(current_heap > currentPtr)
 	{
 		int available_size = getSize(currentPtr);
 		if (available_size >= size && getStatusBit(currentPtr) == 0)
@@ -769,7 +794,33 @@ bool findFirstFreeSpace(size_t size, int **freeBlock)
 	return false;
 }
 
-bool findBestFreeSpace(size_t size, int **freeBlock)
+bool findFirstFreeSpaceInExplicitList(size_t size, int** freeBlock)
+{
+
+	int* currentPtr = beginning + *beginning;
+	if(current_heap == beginning)
+	{
+		return false;
+	}
+
+	while(current_heap > currentPtr && getStatusBit(currentPtr) == 0)
+	{
+		int available_size = getSize(currentPtr);
+		if(available_size >= size){
+			*freeBlock = currentPtr;
+			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
+
+			return true;
+		}
+		int nextFreeBlockOffset = getNextFreeOffset(currentPtr);
+		if(nextFreeBlockOffset <= 0){return false;}
+		currentPtr += nextFreeBlockOffset;
+	}
+	return false;
+}
+
+
+bool findBestFreeSpace(size_t size, int** freeBlock)
 {
 	bool foundAtLeastOne = false;
 	int currentSize = 0;
