@@ -163,14 +163,17 @@ int mm_init(void)
     return 0;
 }
 
+/**
+ * mem_heap_hi gives the address of the last used byte
+ * the function updates the link to the last word accordingly
+ */
 void update_heap_end()
 {
 	heap_end = (int *)((void *)mem_heap_hi() - 3);
 }
 
 /* 
- * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
+ * mm_malloc - Wrapper
  */
 void *mm_malloc(size_t size)
 {
@@ -283,7 +286,7 @@ int *our_mm_malloc(size_t size)
 }
 
 /*
- * mm_free
+ * mm_free - Wrapper
  * blockPtr : address of the first block of data : ie address given to the client
  * meta is one block before.
  */
@@ -292,6 +295,10 @@ void mm_free(void *blockPtr)
 	our_mm_free((int *)blockPtr);
 }
 
+/**
+ * core mm_free function
+ * strategy is given on top of file
+ */
 void our_mm_free(int *blockPtr)
 {
 	//printf("\tfree %p", (int*)blockPtr);
@@ -338,7 +345,7 @@ void our_mm_free(int *blockPtr)
 		glog("Coalescing with next %p", startMeta);
 	};
 
-		// --- PREV BLOCK ---
+	// --- PREV BLOCK ---
 	//check prev block in memory
 	if (startMeta > beginning + 1 && getStatusBit(startMeta - 1) == 0)
 	{
@@ -387,7 +394,8 @@ void our_mm_free(int *blockPtr)
 }
 
 /*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
+ * mm_realloc - Wrapper
+ * handles only basic opeations, otherwise call our_mm_realloc
  */
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -403,6 +411,10 @@ void *mm_realloc(void *ptr, size_t size)
 	return (void *)our_mm_realloc((int *)ptr, size);
 }
 
+/**
+ * core realloc function
+ * strategy is given on top of file
+ */
 int *our_mm_realloc(int *ptr, size_t size)
 {
     int *oldptr = ptr - 1;
@@ -469,6 +481,11 @@ int *our_mm_realloc(int *ptr, size_t size)
 // structure of a free block : Meta|Next|......|Prev|EndMeta
 // Next and Previous are the number of word from Meta to Meta!
 
+/**
+ * insert a free block in the explicit list
+ * links the previous and next free block accordingly
+ * (explicit list)
+ */
 bool putFreeBlockInFreeList(int *startMeta)
 {
 	//printf("Begin putFreeBlock\n");
@@ -591,6 +608,11 @@ bool putFreeBlockInFreeList(int *startMeta)
 	}
 }
 
+/**
+ * remove a free block from the explicit list of free blocks
+ * links the previous and the next free block together
+ * (explicit list)
+ */
 bool takeFreeBlockOutOfTheList(int *startMeta)
 {
 	mm_check();
@@ -656,30 +678,50 @@ bool takeFreeBlockOutOfTheList(int *startMeta)
 	}
 }
 
+/**
+ * get offset to the previous free block
+ * (explicit list)
+ */
 int getPreviousFreeOffset(int *startMeta)
 {
 	int *previousFree = getEndMeta(startMeta) - 1;
 	return *previousFree;
 }
 
+/**
+ * get offset to the next free block
+ * (explicit list)
+ */
 int getNextFreeOffset(int *startMeta)
 {
 	int *nextFree = startMeta + 1;
 	return *nextFree;
 }
 
+/**
+ * used for explicit lists
+ * links free block to the previous free one
+ * address of the previous one is given as an offset
+ */
 void setPreviousFree(int *startMeta, int offset)
 {
 	int *previousFree = getEndMeta(startMeta) - 1;
 	*previousFree = offset;
 }
 
+/**
+ * used with explicit list architecture
+ * links free block to the next free one
+ */
 void setNextFree(int *startMeta, int offset)
 {
 	int *nextFree = startMeta + 1;
 	*nextFree = offset;
 }
 
+/**
+ * Consistency check on meta words
+ */
 bool isMetaValid(int *meta)
 {
 	int *endMeta = getSize(meta) + meta;
@@ -699,7 +741,11 @@ bool isMetaValid(int *meta)
 	return true;
 }
 
-// Give size in WORDs.
+/**
+ * Basic space finder
+ * finds first free blocks that is large enough to contains the requested size
+ * Give size in WORDs.
+ */
 bool findFirstFreeSpace(size_t size, int **freeBlock)
 {
 
@@ -724,6 +770,10 @@ bool findFirstFreeSpace(size_t size, int **freeBlock)
 	return false;
 }
 
+/**
+ * find the optimal free block for the requested size
+ * assume meta are formatted in a explicist list template
+ */
 bool findFirstFreeSpaceInExplicitList(size_t size, int** freeBlock)
 {
 
@@ -750,6 +800,10 @@ bool findFirstFreeSpaceInExplicitList(size_t size, int** freeBlock)
 }
 
 
+/**
+ * find optimal space available
+ * attempts to find a fre block with the exact requested size, otherwise choose a bigger block
+ */
 bool findBestFreeSpace(size_t size, int** freeBlock)
 {
 	bool foundAtLeastOne = false;
@@ -783,6 +837,10 @@ bool findBestFreeSpace(size_t size, int** freeBlock)
 	return false;
 }
 
+/**
+ * find the biggest space available
+ * this function isn't used by the driver : it served as a test
+ */
 void findBigestFreeSpace(int *mysize, int **freeBlock)
 {
 	int* currentPtr = beginning+1;
@@ -871,6 +929,10 @@ bool setMetas(int *meta, int size, int status)
   return true;
 }
 
+/**
+ * returns true if next block is free
+ * handles border case (when the block is the last one)
+ */
 bool isNextFree(int *blockPointer, int *nextSize)
 {
 	int *meta = blockPointer;
@@ -889,6 +951,9 @@ bool isNextFree(int *blockPointer, int *nextSize)
 	return false;
 }
 
+/**
+ * returns true if previous block is free
+ */
 bool isPreviousFree(int *blockPointer, int *previousSize)
 {
 	int *previousMeta = getStartMeta(blockPointer) - 1;
@@ -901,6 +966,9 @@ bool isPreviousFree(int *blockPointer, int *previousSize)
 	return false;
 }
 
+/**
+ * return the status bit of a meta word
+ */
 int getStatusBit(int *metaWord)
 {
 	return *metaWord & 1;
