@@ -138,8 +138,15 @@ int *our_mm_malloc(size_t size)
 	int* possibleFreeBlock = (int*) 0;
 	if(findBestFreeSpace(newsize, &possibleFreeBlock))
 	{
-		setMetas(possibleFreeBlock, getSize(possibleFreeBlock), 1);
-		//printf("Next free block found at %p with size %d\n", possibleFreeBlock, newsize);
+		int leftOverSize = getSize(possibleFreeBlock) - newsize;
+		if(leftOverSize <= 4){
+			setMetas(possibleFreeBlock, getSize(possibleFreeBlock), 1);
+		}
+		else{
+			setMetas(possibleFreeBlock, newsize, 1);
+			setMetas(possibleFreeBlock + newsize, leftOverSize, 0);
+			our_mm_free(possibleFreeBlock + newsize + 1);
+		}
 
 		return possibleFreeBlock + 1;
 	}
