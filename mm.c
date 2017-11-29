@@ -1,14 +1,54 @@
 /*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
+ * mm.c
  * 
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * This memory management program replaces malloc, free & realloc by custom functions
+ * 
+ * The approach used is the "explicit list".
+ * 
+ * =============
+ * 0 - GENERAL
+ * =============
+ * 
+ * The memory structure is segmented in words as following : 
+ * 
+ * 0		4		8		12		16		20		24		28		32		36		40
+ * |INIT	|m_st	|blk	|blk2	|m_end	|m_st	|free1	|free2	|free3	|m_end	|...
+ * 					|///////////////|				|-----------------------|
+ * 					|occupied block	|				| free block			|
+ * 
+ * To reduce the risk of errors, all functions manipulate int* pointers. 
+ * Conversion from/to void* is made into mm_malloc, mm_free, mm_realloc, 
+ * which act as simple wrappers around our_mm_malloc, our_mm_free & our_mm_realloc
+ * 
+ * ================
+ * 1 - META WORDS
+ * ================
+ * An allocable block is surrounded by 2 words (4 bytes) : the meta words.  
+ * Metas allows the program to navigate in the memory and identify free and occupied regions
+ * A meta is represented as an (int). Informations are stored in the following way :
+ *  -	meta & 1  = 1 if block is occupied, 0 if free
+ * 	-	meta & -2 = size of the block in words (metas are included)
+ * 
+ * ==============
+ * 2 - STRATEGY
+ * ==============
+ * 	a - MALLOC
+ * Upon a new request, mm_malloc scans the memory to find a large enough free block.
+ * If such a block doesn't exist, we request new memory pages using mem_sbrk.
+ * Once the free region found, the driver allocates just the right amount of blocks, 
+ * 		/!\ except if the resulting free region left would be smaller than 4 words
+ * 			in that case, the free region is entirely used
+ * 
+ * 	b - FREE
+ * after setting metas to "free", the driver attempts to merge it with the neighbouring free regions
+ * 
+ * 	c - REALLOC
+ * When requested for an extension, realloc first checks if the existing block is already fitting the request
+ * If no, it checks if the block is followed by a large enough free zone
+ * If no, it copies the data to another place (found by malloc()), then free the initial zone
+ * 
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -19,10 +59,6 @@
 #include "memlib.h"
 #include <stdarg.h>
 
-/*********************************************************
- * NOTE TO STUDENTS: Before you do anything else, please
- * provide your team information in the following struct.
- ********************************************************/
 team_t team = {
     /* Team name */
     "Dexter",
@@ -46,6 +82,20 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+//set to 1 for more detailed runs
+#define VERBOSE 0
+//used in personal logging functions
+#define LOG_SIZE 1024
+
+/**
+ * Internal logging
+ */
+void glog(const char* format, ...);
+
+/**
+ * Elementary bit/word reading/manipulation functions
+ */
+//META WORDS
 #define TRY_EXPLICIT_LIST 0
 
 
@@ -53,12 +103,24 @@ int getStatusBit(int* metaWord);
 void setStatusBit(int* metaWord, int status);
 size_t getSize(int* metaWord);
 void setSize(int* metaWord, size_t size);
+
+//REGIONS
 int* getStartMeta(void* blockPointer);
 int* getEndMeta(int* blockPointer);
 bool setMetas(int* meta, int size, int status);
 bool isPreviousFree(int* blockPointer, int* previousSize);
-bool isNextFree(int* blockPointer, int* nextSize);
 
+//EXPLORATION
+bool isNextFree(int* blockPointer, int* nextSize);
+int getNextFreeOffset(int* startMeta);
+int getPreviousFreeOffset(int* startMeta);
+void setNextFree(int* startMeta, int offset);
+void setPreviousFree(int* startMeta, int offset);
+
+/**
+ * Core functions
+ * our_mm_malloc, our_mm_free, our_mm_realloc do the "real" job, when called by their respective wrappers
+ */
 int *our_mm_malloc(size_t size);
 int *our_mm_realloc(int *ptr, size_t size);
 void our_mm_free(int *blockPtr);
@@ -71,39 +133,26 @@ bool findBestFreeSpace(size_t size, int** freeBlock);
 bool putFreeBlockInFreeList(int* startMeta);
 bool takeFreeBlockOutOfTheList(int* startMeta);
 
-int getNextFreeOffset(int* startMeta);
-int getPreviousFreeOffset(int* startMeta);
-void setNextFree(int* startMeta, int offset);
-void setPreviousFree(int* startMeta, int offset);
 
 
+/**
+ * size of the new page requested to mem_sbrk when memory looks full
+ */
+const size_t add_block_size = 1<<12;
+
+const size_t WORD_SIZE = 4;
 int *beginning;
 size_t heap_size = 1<<8;
-size_t add_block_size = 1<<12;
 int *current_heap;
 int *heap_end;
 
 int totalAlloc = 0;
 int numberOfFree = 0;
 
-size_t WORD_SIZE = 4;
 
-#define LOG_SIZE 1024
-#define VERBOSE 0
-/*
- * Personal logging function
- * deactivated for release
- */
-void glog(const char* format, ...){
-#if VERBOSE
-        char out[LOG_SIZE];
-        va_list argptr;
-        va_start(argptr, format);
-        vsprintf(out, format, argptr);
-        va_end(argptr);
-        printf("%s\n", out);
-#endif
-}
+
+
+
 
 
 /* 
@@ -924,6 +973,21 @@ int* getEndMeta(int* blockPointer)
 	//printf("size =  %d \n", getSize(meta));
 	//printf("end adress   = %p\n",meta + getSize(meta) - 1);	
 	return blockPointer + getSize(blockPointer) - 1;
+}
+
+/*
+ * Personal logging function
+ * deactivated for release
+ */
+void glog(const char* format, ...){
+#if VERBOSE
+        char out[LOG_SIZE];
+        va_list argptr;
+        va_start(argptr, format);
+        vsprintf(out, format, argptr);
+        va_end(argptr);
+        printf("%s\n", out);
+#endif
 }
 
 
