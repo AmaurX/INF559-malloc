@@ -352,12 +352,6 @@ void our_mm_free(int *blockPtr)
 		//printf("\t coalescing with previous %p -> %p \n", startMeta, prevBlockEndMeta);
 	}
 
-	/* DANGEROUS FOR EXPLICIT FREE LIST!
-	if(*beginning == -1 || *beginning > (int) startMeta)
-	{
-		*beginning = (int) startMeta;
-	}
-	*/
 	setStatusBit(startMeta, 0);
 	setStatusBit(endMeta, 0);
 
@@ -417,44 +411,10 @@ int *our_mm_realloc(int *ptr, size_t size)
 
 	
     if(isNextFree(oldptr, &nextBlockSize))
-    {
-		/*
-		//printf("Le block suivant est libre!!\n");
-		if(nextBlockSize == -1)
-		{	
-			//This means that this block is the last one. We just need to add more space to the heap
-			int addingSize = (askedSize - oldSize)*WORD_SIZE;
-			printf("adding Size  : %zu", addingSize);
-			if(addingSize<0){printf("chelou\n");}
-			void* allocation = mem_sbrk(addingSize);
-			if (allocation == (void *)-1){
-				printf("\n new-old byte: %d\n",( askedSize - oldSize)*WORD_SIZE);
-				printf("beginning    : %p\n", beginning);
-				printf("current_heap : %p\n", current_heap);
-				printf("heap_end     : %p\n", heap_end);
-				printf("heap_size    : %d\n", heap_size);
-				printf("comparison   : %d < %d ?\n", heap_size - (size_t)(current_heap - beginning)*WORD_SIZE, addingSize);
-				int BiggestFoundSize = -1;
-				int* freeBlock = (int*)0;
-				findBigestFreeSpace(&BiggestFoundSize, &freeBlock);
-				printf("Biggest free block found at %p with size %d\n", freeBlock, BiggestFoundSize);
-				return NULL;
-			}
-			update_heap_end();
-			heap_size = mem_heapsize();
-			current_heap += addingSize;	
-			setMetas(newptr, askedSize, 1);
-			current_heap = newptr + getSize(newptr);
-			if(!mm_check()){printf("Here is double shit\n");}
-			
-
-			return (newptr + 1);
-		}
-		*/
-		
+    {		
     	if(oldSize + nextBlockSize >= askedSize)
 	  	{
-	    	//printf("cool, y a de la place!\n");
+	    	//printf("There is room!\n");
 	    	// First, allocate new size
 	    	newptr = oldptr;
 	    	setMetas(newptr, oldSize + nextBlockSize, 1);
@@ -467,37 +427,11 @@ int *our_mm_realloc(int *ptr, size_t size)
 	      		setMetas(nextFreeMetaBlock, remainingFreeSpace, 1);
 				our_mm_free(nextFreeMetaBlock);
 	    	}
-			//if(!mm_check()){printf("Here is shit\n");}
+			//if(!mm_check()){printf("Heap inconsistent\n");}
 	    	return (newptr + 1);
 	  	}
     }
     
-	/*
-    else if (isPreviousFree(oldptr, &previousBlockSize))
-	{
-		if(oldSize + previousBlockSize >= askedSize)
-		{
-		// First, allocate new size
-			newptr = oldptr - previousBlockSize;
-			setMetas(newptr, oldSize + previousBlockSize, 1);
-			
-			 copySize = (getSize(oldptr) - 1)*WORD_SIZE;
-    		if (size < copySize)
-      			copySize = 8 * (ALIGN(size)/WORD_SIZE);
-   			memcpy((void*)(newptr), (void*)(oldptr), copySize);
-			setMetas(newptr, oldSize + previousBlockSize, 1);
-
-			// Free the remaining space
-			int remainingFreeSpace = oldSize + previousBlockSize - askedSize;
-			if(remainingFreeSpace> 3){
-				int* nextFreeMetaBlock = newptr + askedSize;
-				setMetas(nextFreeMetaBlock, remainingFreeSpace, 0);
-				our_mm_free(nextFreeMetaBlock);
-			}
-			return (newptr + 1);
-		}
-	}
-    */
     
     //printf("We had to add at the end... \n");
     newptr = our_mm_malloc(size);
@@ -512,7 +446,7 @@ int *our_mm_realloc(int *ptr, size_t size)
 
 
     our_mm_free(oldptr+1);
-    //if(!mm_check()){printf("Here is more shit...\n");}
+    //if(!mm_check()){printf("Heap insconsistent\n");}
     return newptr;
 }
 
@@ -529,7 +463,7 @@ int *our_mm_realloc(int *ptr, size_t size)
 bool putFreeBlockInFreeList(int* startMeta)
 {
 	//printf("Begin putFreeBlock\n");
-	mm_check();
+	//mm_check();
 	int freesize = getSize(startMeta);
 	if(freesize < 4)
 	{
@@ -757,11 +691,7 @@ bool isMetaValid(int *meta)
 bool findFirstFreeSpace(size_t size, int** freeBlock)
 {
 
-	int* currentPtr = (int*)*beginning;
-	if(currentPtr == (int*)0)
-	{
-	 currentPtr = beginning + 1;
-	}
+	int* currentPtr = beginning + 1;
 
 	while(current_heap > currentPtr)
 	{
@@ -808,11 +738,7 @@ bool findBestFreeSpace(size_t size, int** freeBlock)
 {
 	bool foundAtLeastOne = false;
 	int currentSize = 0;
-	int* currentPtr = (int*)*beginning;
-	if(currentPtr == (int*)0)
-	{
-	 currentPtr = beginning + 1;
-	}
+	int* currentPtr = beginning + 1;
 
 	while((void*)current_heap - (void*)currentPtr > 0)
 	{
@@ -836,14 +762,8 @@ bool findBestFreeSpace(size_t size, int** freeBlock)
 
 void findBigestFreeSpace(int* mysize, int** freeBlock)
 {
-	//int* currentPtr = (int*)*beginning;
-	int * currentPtr = beginning+1;
+	int* currentPtr = beginning+1;
 	int currentSize = 0;
-
-	if(currentPtr == (int*)-1)
-	{
-		currentPtr = beginning + 1;
-	}
 
 	//printf("%p\n", currentPtr);
 	//printf("%d free on %d\n", numberOfFree, totalAlloc + numberOfFree);
@@ -972,7 +892,6 @@ void setStatusBit(int* metaWord, int status)
  */
 size_t getSize(int* metaWord)
 {
-	//if(abs(*metaWord & -2) > 12000){printf("YOU MOTHERFUCKER! : %d", *metaWord & -2);}
 	return  (size_t)(*metaWord & -2);
 }
 
@@ -1028,5 +947,3 @@ void glog(const char* format, ...){
         printf("%s\n", out);
 #endif
 }
-
-
