@@ -64,6 +64,13 @@ bool mm_check();
 void findBigestFreeSpace(int *size, int** freeBlock);
 bool isMetaValid(int *meta);
 bool findBestFreeSpace(size_t size, int** freeBlock);
+bool putFreeBlockInFreeList(int* startMeta);
+bool takeFreeBlockOutOfTheList(int* possibleFreeBlock);
+
+int getNextFreeOffset(int* startMeta);
+int getPreviousFreeOffset(int* startMeta);
+void setNextFree(int* startMeta, int offset);
+void setPreviousFree(int* startMeta, int offset);
 
 
 int *beginning;
@@ -101,7 +108,7 @@ void glog(const char* format, ...){
 int mm_init(void)
 {
 	beginning = (int*)mem_sbrk(heap_size);
-	*beginning = -1;
+	*beginning = 0;
 	current_heap = beginning + 1;
 	update_heap_end();
     return 0;
@@ -136,8 +143,11 @@ int *our_mm_malloc(size_t size)
 	//printf("%p and %p", block, (void*)block);
 
 	int* possibleFreeBlock = (int*) 0;
-	if(findBestFreeSpace(newsize, &possibleFreeBlock))
+	if(findFirstFreeSpace(newsize, &possibleFreeBlock))
 	{
+		// First, take the freeblock out of the free list
+		takeFreeBlockOutOfTheList(possibleFreeBlock);
+
 		int leftOverSize = getSize(possibleFreeBlock) - newsize;
 		if(leftOverSize <= 4){
 			setMetas(possibleFreeBlock, getSize(possibleFreeBlock), 1);
@@ -217,14 +227,10 @@ void our_mm_free(int *blockPtr)
 	int* endMeta = getEndMeta(startMeta);
 	
 
-	// IL FAUT CES DEUX LIGNES!!!!!!!
-	setStatusBit(startMeta, 0);
-	setStatusBit(endMeta, 0);
-
 	//printf("\t %p -> %p, %zu | %zu\n", startMeta, endMeta, getSize(startMeta), getSize(endMeta));
+	
 	// --- NEXT BLOCK ---
 	//check next block in memory
-
 	if(endMeta < current_heap -1 && getStatusBit(endMeta + 1) == 0)
 	{
 		int* nextBlockMeta = endMeta + 1;
@@ -234,7 +240,6 @@ void our_mm_free(int *blockPtr)
 
 		//printf("total size = %d, nextblockSize = %d, current size = %d \n",totalSize, getSize(nextBlockMeta), getSize(startMeta) );
 
-		//SEGFAULT PAR ICI!!
 		if(abs(totalSize) > heap_size || totalSize <= 0){
 			printf("Probleme de size : heap size = %d \n",heap_size);
 			return;
@@ -277,10 +282,14 @@ void our_mm_free(int *blockPtr)
 		//printf("\t coalescing with previous %p -> %p \n", startMeta, prevBlockEndMeta);
 	}
 
+	/* DANGEROUS FOR EXPLICIT FREE LIST!
 	if(*beginning == -1 || *beginning > (int) startMeta)
 	{
 		*beginning = (int) startMeta;
 	}
+	*/
+	setStatusBit(startMeta, 0);
+	setStatusBit(endMeta, 0);
 
 	if(startMeta + getSize(startMeta) == current_heap)
 	{
@@ -288,150 +297,18 @@ void our_mm_free(int *blockPtr)
 		current_heap = startMeta;
 	}
 	//printf("\t endOf Coal %p -> %p ", startMeta, endMeta);
-	//setStatusBit(startMeta, 0);
-	//setStatusBit(endMeta, 0);
+	else
+	{
+		putFreeBlockInFreeList(startMeta);
+	}
+
 	glog("Freed space at %p", startMeta);
 	//
-}
 
-
-bool isMetaValid(int *meta)
-{
-	int* endMeta = getSize(meta) + meta;
-	//printf("%d\n",getSize(meta));
-	if(meta <= beginning || meta >= heap_end){return false;}
-	if(endMeta <= beginning || endMeta >= heap_end){return false;}
-	if(endMeta <= meta){return false;}
-	return true;
+	//Now starting the explicit Free list
 
 }
 
-
-// Give size in WORDs.
-bool findFirstFreeSpace(size_t size, int** freeBlock)
-{
-
-	int* currentPtr = (int*)*beginning;
-	if(currentPtr == (int*)-1)
-	{
-	 currentPtr = beginning + 1;
-	}
-
-	while((void*)current_heap - (void*)currentPtr > 0)
-	{
-		int available_size = getSize(currentPtr);
-		if(available_size >= size && getStatusBit(currentPtr) == 0){
-			*freeBlock = currentPtr;
-			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
-
-			return true;
-		}
-		if(available_size <= 0){return false;}
-		currentPtr += available_size;
-	}
-	return false;
-}
-
-bool findBestFreeSpace(size_t size, int** freeBlock)
-{
-	bool foundAtLeastOne = false;
-	int currentSize = 0;
-	int* currentPtr = (int*)*beginning;
-	if(currentPtr == (int*)-1)
-	{
-	 currentPtr = beginning + 1;
-	}
-
-	while((void*)current_heap - (void*)currentPtr > 0)
-	{
-		int available_size = getSize(currentPtr);
-		if(available_size >= size && (!foundAtLeastOne || currentSize > available_size) && getStatusBit(currentPtr) == 0){
-			*freeBlock = currentPtr;
-			currentSize = available_size;
-			foundAtLeastOne = true;
-			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
-			if(available_size == size){
-				return true;
-			}
-		}
-		if(available_size <= 0){return false;}
-		currentPtr += available_size;
-	}
-	if(foundAtLeastOne){return true;}
-	return false;
-}
-
-
-void findBigestFreeSpace(int* mysize, int** freeBlock)
-{
-	//int* currentPtr = (int*)*beginning;
-	int * currentPtr = beginning+1;
-	int currentSize = 0;
-
-	if(currentPtr == (int*)-1)
-	{
-		currentPtr = beginning + 1;
-	}
-
-	printf("%p\n", currentPtr);
-	printf("%d free on %d\n", numberOfFree, totalAlloc + numberOfFree);
-
-	while((void*)currentPtr < (void*)current_heap)
-	{
-		int available_size = getSize(currentPtr);
-		printf("available_size = %d and free = %d\n", available_size, getStatusBit(currentPtr));
-		if(available_size > currentSize && getStatusBit(currentPtr) == 0)
-		{
-			printf("HELLO\n");
-
-			currentSize = available_size;
-			*freeBlock = currentPtr;
-			*mysize = currentSize;
-		}
-		if(available_size <= 0){return;}
-		currentPtr += available_size;
-	}
-
-}
-
-
-bool mm_check()
-{
-	int* currentPtr = beginning + 1;
-	int occupation = getStatusBit(currentPtr) ^ 1;
-	numberOfFree = 0;
-	totalAlloc = 0;
-	while(currentPtr < current_heap)
-	{
-		int available_size = getSize(currentPtr);
-		int newoccupation = getStatusBit(currentPtr);
-		if(newoccupation ==0)
-		{
-			numberOfFree +=1;
-		}
-		else
-		{
-			totalAlloc +=1;
-		}
-		if(newoccupation == occupation && occupation == 0){
-			printf("DEBUG : two succesive blocks are free\n");
-			return false;
-		}
-
-		if(available_size != getSize(currentPtr + available_size - 1))
-		{
-			printf("DEBUG : Beginning and Ending meta not matching... \n");
-			return false;
-		}
-
-		occupation = newoccupation;
-		currentPtr += available_size;
-	}
-
-	//printf("number of free :%d and occupied ; %d \n", numberOfFree, totalAlloc);
-
-	return true;
-}
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
@@ -448,6 +325,7 @@ void *mm_realloc(void *ptr, size_t size)
 	}
 	return (void*)our_mm_realloc((int*)ptr, size);
 }
+
 
 int *our_mm_realloc(int *ptr, size_t size)
 {
@@ -555,6 +433,298 @@ int *our_mm_realloc(int *ptr, size_t size)
     //if(!mm_check()){printf("Here is more shit...\n");}
     return newptr;
 }
+
+
+//////////////////////////////////////////////////////////////////////
+//
+// The set of helper functions
+//
+//////////////////////////////////////////////////////////////////////
+
+// structure of a free block : Meta|Next|......|Prev|EndMeta
+// Next and Previous are the number of word from Meta to Meta!
+
+bool putFreeBlockInFreeList(int* startMeta)
+{
+	//printf("Begin putFreeBlock\n");
+	mm_check();
+	int freesize = getSize(startMeta);
+	if(freesize <= 4)
+	{
+		printf("The free block is too small.\n");
+		return false;
+	}
+
+	// There are four possibilities : adding the first one,  adding at the beginning, 
+	// adding at the end, or adding in the middle of the list.
+
+	if(*beginning == 0)
+	{
+		// This means that no free block is available, this is the first one.
+		int firstFreeSpace = (int) (startMeta - beginning);
+		if(firstFreeSpace > 0)
+		{
+			*beginning = firstFreeSpace;
+			setPreviousFree(startMeta, firstFreeSpace);
+			setNextFree(startMeta, 0);
+			return true;
+		}
+		else
+		{
+			printf("firstFreeSpace has negative offset\n");
+			return false;
+		}
+	}
+	else
+	{
+		// This means there is already one free block. First we try to find one after this one.
+		int* currentPtr = startMeta + freesize;
+		int* nextFreeMeta = (int*)0;
+		while(currentPtr < current_heap)
+		{
+			int size = getSize(currentPtr);
+			if(getStatusBit(currentPtr) == 0){
+				nextFreeMeta = currentPtr;
+				break;
+			}
+			currentPtr += size;
+			if(size <= 0)
+			{
+				printf("size is not really positive... \n");
+				return false;
+			}
+		}
+		if(nextFreeMeta == (int*)0)
+		{
+			//It means there is no free block after this free block, so we put the Next at 0.
+			setNextFree(startMeta, 0);
+
+			// Lets backward to the previous free block then... No other choice, for now.
+			
+			currentPtr = startMeta;
+			int* previousFreeMeta = beginning;
+			printf("Starting countdown\n");
+			while(currentPtr > beginning +1)
+			{	
+				printf("%p\n", currentPtr);
+				int size = getSize(currentPtr -1);
+				if(getStatusBit(currentPtr - 1) == 0){
+					previousFreeMeta = currentPtr - size;
+					break;
+				}
+				currentPtr -= size;
+				if(size <= 0)
+				{
+					printf("size is not positive : %d... \n", size);
+					return false;
+				}
+			}
+			if(previousFreeMeta == beginning)
+			{
+				//This is not supposed to happen, this case should have been handled before...
+				printf("*Beginning == %d but no free space found \n", *beginning);
+				//Let's still handle the case:
+
+			}
+			else
+			{
+				setPreviousFree(startMeta, startMeta - previousFreeMeta);
+				setNextFree(previousFreeMeta, startMeta - previousFreeMeta);
+			}
+		}
+		else
+		{
+			// Here, we have a next free block, which will contain a Prev which points to the previous free space in line, that we need!
+			if(isMetaValid(nextFreeMeta))
+			{
+				int* previousFreeMeta = nextFreeMeta - getPreviousFreeOffset(nextFreeMeta);
+				
+				setPreviousFree(startMeta, startMeta - previousFreeMeta);
+				setNextFree(startMeta, nextFreeMeta - startMeta);
+				setPreviousFree(nextFreeMeta, nextFreeMeta - startMeta);
+
+				if(previousFreeMeta != beginning)
+				{
+					setNextFree(previousFreeMeta, startMeta - previousFreeMeta);
+				}
+				else
+				{
+					*beginning = startMeta - previousFreeMeta;
+				}
+				return true;
+			}
+			else
+			{
+				printf("nextFreeMeta isn't valid... : %p %p -> %d\n", startMeta ,nextFreeMeta, getSize(nextFreeMeta));
+				return false;
+			}
+		}
+	}
+}
+
+int getPreviousFreeOffset(int* startMeta)
+{
+	int* previousFree = getEndMeta(startMeta) - 1;
+	return *previousFree;
+}
+
+int getNextFreeOffset(int* startMeta)
+{
+	int* nextFree = startMeta + 1;
+	return *nextFree;
+}
+
+void setPreviousFree(int* startMeta, int offset)
+{
+	int* previousFree = getEndMeta(startMeta) - 1;
+	*previousFree = offset;
+}
+
+void setNextFree(int* startMeta, int offset)
+{
+	int* nextFree = startMeta + 1;
+	*nextFree = offset;
+}
+
+
+bool isMetaValid(int *meta)
+{
+	int* endMeta = getSize(meta) + meta;
+	//printf("%d\n",getSize(meta));
+	if(meta <= beginning || meta >= heap_end){return false;}
+	if(endMeta <= beginning || endMeta >= heap_end){return false;}
+	if(endMeta <= meta){return false;}
+	return true;
+
+}
+
+
+// Give size in WORDs.
+bool findFirstFreeSpace(size_t size, int** freeBlock)
+{
+
+	int* currentPtr = (int*)*beginning;
+	if(currentPtr == (int*)0)
+	{
+	 currentPtr = beginning + 1;
+	}
+
+	while((void*)current_heap - (void*)currentPtr > 0)
+	{
+		int available_size = getSize(currentPtr);
+		if(available_size >= size && getStatusBit(currentPtr) == 0){
+			*freeBlock = currentPtr;
+			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
+
+			return true;
+		}
+		if(available_size <= 0){return false;}
+		currentPtr += available_size;
+	}
+	return false;
+}
+
+bool findBestFreeSpace(size_t size, int** freeBlock)
+{
+	bool foundAtLeastOne = false;
+	int currentSize = 0;
+	int* currentPtr = (int*)*beginning;
+	if(currentPtr == (int*)0)
+	{
+	 currentPtr = beginning + 1;
+	}
+
+	while((void*)current_heap - (void*)currentPtr > 0)
+	{
+		int available_size = getSize(currentPtr);
+		if(available_size >= size && (!foundAtLeastOne || currentSize > available_size) && getStatusBit(currentPtr) == 0){
+			*freeBlock = currentPtr;
+			currentSize = available_size;
+			foundAtLeastOne = true;
+			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
+			if(available_size == size){
+				return true;
+			}
+		}
+		if(available_size <= 0){return false;}
+		currentPtr += available_size;
+	}
+	if(foundAtLeastOne){return true;}
+	return false;
+}
+
+
+void findBigestFreeSpace(int* mysize, int** freeBlock)
+{
+	//int* currentPtr = (int*)*beginning;
+	int * currentPtr = beginning+1;
+	int currentSize = 0;
+
+	if(currentPtr == (int*)-1)
+	{
+		currentPtr = beginning + 1;
+	}
+
+	printf("%p\n", currentPtr);
+	printf("%d free on %d\n", numberOfFree, totalAlloc + numberOfFree);
+
+	while((void*)currentPtr < (void*)current_heap)
+	{
+		int available_size = getSize(currentPtr);
+		printf("available_size = %d and free = %d\n", available_size, getStatusBit(currentPtr));
+		if(available_size > currentSize && getStatusBit(currentPtr) == 0)
+		{
+			printf("HELLO\n");
+
+			currentSize = available_size;
+			*freeBlock = currentPtr;
+			*mysize = currentSize;
+		}
+		if(available_size <= 0){return;}
+		currentPtr += available_size;
+	}
+
+}
+
+
+bool mm_check()
+{
+	int* currentPtr = beginning + 1;
+	int occupation = getStatusBit(currentPtr) ^ 1;
+	numberOfFree = 0;
+	totalAlloc = 0;
+	while(currentPtr < current_heap)
+	{
+		int available_size = getSize(currentPtr);
+		int newoccupation = getStatusBit(currentPtr);
+		if(newoccupation ==0)
+		{
+			numberOfFree +=1;
+		}
+		else
+		{
+			totalAlloc +=1;
+		}
+		if(newoccupation == occupation && occupation == 0){
+			printf("DEBUG : two succesive blocks are free\n");
+			return false;
+		}
+
+		if(available_size != getSize(currentPtr + available_size - 1))
+		{
+			printf("DEBUG : Beginning and Ending meta not matching... \n");
+			return false;
+		}
+
+		occupation = newoccupation;
+		currentPtr += available_size;
+	}
+
+	//printf("number of free :%d and occupied ; %d \n", numberOfFree, totalAlloc);
+
+	return true;
+}
+
 
 bool setMetas(int* meta, int size, int status)
 {	
