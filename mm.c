@@ -132,7 +132,7 @@ bool isMetaValid(int *meta);
 bool findBestFreeSpace(size_t size, int** freeBlock);
 bool putFreeBlockInFreeList(int* startMeta);
 bool takeFreeBlockOutOfTheList(int* startMeta);
-
+bool findFirstFreeSpaceInExplicitList(size_t size, int** freeBlock);
 
 
 /**
@@ -197,7 +197,20 @@ int *our_mm_malloc(size_t size)
 	//printf("%p and %p", block, (void*)block);
 
 	int* possibleFreeBlock = (int*) 0;
-	if(findFirstFreeSpace(newsize, &possibleFreeBlock))
+
+	bool isThereAFreeBlock = false;
+
+
+	if(TRY_EXPLICIT_LIST)
+	{
+		isThereAFreeBlock = findFirstFreeSpaceInExplicitList(newsize, &possibleFreeBlock);
+	}
+	else
+	{
+		isThereAFreeBlock = findFirstFreeSpace(newsize, &possibleFreeBlock);
+	}
+
+	if(isThereAFreeBlock)
 	{
 		// First, take the freeblock out of the free list
 		if(TRY_EXPLICIT_LIST)
@@ -750,7 +763,7 @@ bool findFirstFreeSpace(size_t size, int** freeBlock)
 	 currentPtr = beginning + 1;
 	}
 
-	while((void*)current_heap - (void*)currentPtr > 0)
+	while(current_heap > currentPtr)
 	{
 		int available_size = getSize(currentPtr);
 		if(available_size >= size && getStatusBit(currentPtr) == 0){
@@ -764,6 +777,32 @@ bool findFirstFreeSpace(size_t size, int** freeBlock)
 	}
 	return false;
 }
+
+bool findFirstFreeSpaceInExplicitList(size_t size, int** freeBlock)
+{
+
+	int* currentPtr = beginning + *beginning;
+	if(current_heap == beginning)
+	{
+		return false;
+	}
+
+	while(current_heap > currentPtr && getStatusBit(currentPtr) == 0)
+	{
+		int available_size = getSize(currentPtr);
+		if(available_size >= size){
+			*freeBlock = currentPtr;
+			//printf("available_size = %d and free = %d at ptr = %p\n", available_size, getStatusBit(currentPtr), currentPtr);
+
+			return true;
+		}
+		int nextFreeBlockOffset = getNextFreeOffset(currentPtr);
+		if(nextFreeBlockOffset <= 0){return false;}
+		currentPtr += nextFreeBlockOffset;
+	}
+	return false;
+}
+
 
 bool findBestFreeSpace(size_t size, int** freeBlock)
 {
