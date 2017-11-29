@@ -65,7 +65,7 @@ void findBigestFreeSpace(int *size, int** freeBlock);
 bool isMetaValid(int *meta);
 bool findBestFreeSpace(size_t size, int** freeBlock);
 bool putFreeBlockInFreeList(int* startMeta);
-bool takeFreeBlockOutOfTheList(int* possibleFreeBlock);
+bool takeFreeBlockOutOfTheList(int* startMeta);
 
 int getNextFreeOffset(int* startMeta);
 int getPreviousFreeOffset(int* startMeta);
@@ -561,6 +561,23 @@ bool putFreeBlockInFreeList(int* startMeta)
 		}
 	}
 }
+
+bool takeFreeBlockOutOfTheList(int* startMeta)
+{
+	mm_check();
+	int freesize = getSize(startMeta);
+	if(freesize <= 4)
+	{
+		printf("The free block is too small.\n");
+		return false;
+	}
+
+	// There are four possibilities : deleting the last one, deleting at the beginning
+	// deleting at the end, or deleting in the middle of the list.
+	
+	
+}
+
 
 int getPreviousFreeOffset(int* startMeta)
 {
