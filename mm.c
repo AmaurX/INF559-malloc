@@ -351,7 +351,8 @@ int *our_mm_realloc(int *ptr, size_t size)
 	if(oldSize >= askedSize){return ptr;}
 
     int nextBlockSize = askedSize - oldSize;
-    
+    //int previousBlockSize = askedSize - oldSize;
+
 	
     if(isNextFree(oldptr, &nextBlockSize))
     {
@@ -391,7 +392,7 @@ int *our_mm_realloc(int *ptr, size_t size)
 		
     	if(oldSize + nextBlockSize >= askedSize)
 	  	{
-	    	printf("cool, y a de la place!\n");
+	    	//printf("cool, y a de la place!\n");
 	    	// First, allocate new size
 	    	newptr = oldptr;
 	    	setMetas(newptr, oldSize + nextBlockSize, 1);
@@ -408,24 +409,32 @@ int *our_mm_realloc(int *ptr, size_t size)
 	    	return (newptr + 1);
 	  	}
     }
-    /*
-      else if (isPreviousFree(oldptr, &previousBlockSize))
-      {
-      if(oldSize + previousBlockSize >= askedSize)
-      {
-      // First, allocate new size
-      newptr = oldptr - previousBlockSize;
-      setMetas(newptr, askedSize, 1);
-      
-      // Free the remaining space
-      int remainingFreeSpace = oldSize + previousBlockSize - askedSize;
-      if(remainingFreeSpace> 1){
-      int* nextFreeMetaBlock = newptr + askedSize;
-      setMetas(nextFreeMetaBlock, remainingFreeSpace, 0);
-      }
-      return (void*)(newptr + 1);
-      }
-      }
+    
+	/*
+    else if (isPreviousFree(oldptr, &previousBlockSize))
+	{
+		if(oldSize + previousBlockSize >= askedSize)
+		{
+		// First, allocate new size
+			newptr = oldptr - previousBlockSize;
+			setMetas(newptr, oldSize + previousBlockSize, 1);
+			
+			 copySize = (getSize(oldptr) - 1)*WORD_SIZE;
+    		if (size < copySize)
+      			copySize = 8 * (ALIGN(size)/WORD_SIZE);
+   			memcpy((void*)(newptr), (void*)(oldptr), copySize);
+			setMetas(newptr, oldSize + previousBlockSize, 1);
+
+			// Free the remaining space
+			int remainingFreeSpace = oldSize + previousBlockSize - askedSize;
+			if(remainingFreeSpace> 3){
+				int* nextFreeMetaBlock = newptr + askedSize;
+				setMetas(nextFreeMetaBlock, remainingFreeSpace, 0);
+				our_mm_free(nextFreeMetaBlock);
+			}
+			return (newptr + 1);
+		}
+	}
     */
     
     //printf("We had to add at the end... \n");
