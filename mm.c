@@ -12,9 +12,9 @@
  * The memory structure is segmented in words as following : 
  * 
  * 0		4		8		12		16		20		24		28		32		36		40
- * |INIT	|m_st	|blk	|blk2	|m_end	|m_st	|free1	|free2	|free3	|m_end	|...
- * 					|///////////////|				|-----------------------|
- * 					|occupied block	|				| free block			|
+ * |INIT	|m_st	|blk	|blk2	|m_end	|m_st	|free1	|free2	|free3	|free4	|m_end
+ * 					|///////////////|				|-------------------------------|
+ * 					|occupied block	|				| free block					|
  * 
  * In the code, m_st is often referred as meta or metaStart, as well as m_end is often endMeta
  * 
@@ -49,7 +49,22 @@
  * If no, it checks if the block is followed by a large enough free zone
  * If no, it copies the data to another place (found by malloc()), then free the initial zone
  * 
+ * 	d - EXPLICIT FREE LIST
  * 
+ * The preprocessor variable TRY_EXPLICIT_LIST can be used to pass to a mode of explicit list, curently not working.
+ * the idea is the following. As we made sure that each free block is at least 4 words long, including the metas, 
+ * we can add more info: NEXT and PREV
+ * 
+ * 0		4		8		12		16		20		24		28		32		36		40
+ * |NEXT	|m_st	|blk	|blk2	|m_end	|m_st	|NEXT	|free2	|free3	|PREV	|m_end
+ * 					|///////////////|				|-------------------------------|
+ * |5 	   	|		|occupied block	|				| 0     |			 	|5  	|
+ * 
+ * NEXT is the number of word from m_st to the m_st of the next free block, and PREV to the previous free block.
+ * Notice that the very first block gives the offset to the first free block, and the previous of the first free block goes back to
+ * the very first block
+ * If a free block is last in line, his next is 0. 
+ * All offsets are relative to m_st, which is why PREV is 5 (5*4 = 20 -> m_st) in the example above
  */
 
 #include <stdio.h>
@@ -870,6 +885,14 @@ void findBigestFreeSpace(int *mysize, int **freeBlock)
 	}
 }
 
+
+/**
+ * Heap consistency checker
+ * Checks two things : 
+ *  - if there are two adjacent free blocks
+ *  - if the size is the same in the startmeta and in the endMeta for each block
+ * It also counts the number of free blocks and of occupied blocks. Useful for debugging
+ */ 
 bool mm_check()
 {
 	int *currentPtr = beginning + 1;
@@ -903,12 +926,13 @@ bool mm_check()
 		occupation = newoccupation;
 		currentPtr += available_size;
 	}
-
 	//printf("number of free :%d and occupied ; %d \n", numberOfFree, totalAlloc);
-
 	return true;
 }
 
+/**
+ * setMetas enter the right size in both start and end metas, with the right first bit to indicate occupation
+*/
 bool setMetas(int *meta, int size, int status)
 {	
 	if (status > 1)
@@ -953,6 +977,7 @@ bool isNextFree(int *blockPointer, int *nextSize)
 
 /**
  * returns true if previous block is free
+ * NOT USED
  */
 bool isPreviousFree(int *blockPointer, int *previousSize)
 {
